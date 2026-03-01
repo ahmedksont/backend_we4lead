@@ -1,0 +1,294 @@
+package com.we4lead.backend.service;
+
+import com.we4lead.backend.Repository.CreneauRepository;
+import com.we4lead.backend.Repository.RdvRepository;
+import com.we4lead.backend.Repository.UserRepository;
+import com.we4lead.backend.dto.CreneauResponse;
+import com.we4lead.backend.dto.MedecinResponse;
+import com.we4lead.backend.dto.RdvResponse;
+import com.we4lead.backend.dto.UniversiteResponse;
+import com.we4lead.backend.dto.UserUpdateRequest;
+import com.we4lead.backend.dto.EtudiantResponse;
+import com.we4lead.backend.entity.Role;
+import com.we4lead.backend.entity.User;
+import com.we4lead.backend.entity.Genre;
+import com.we4lead.backend.entity.Situation;
+import jakarta.transaction.Transactional;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
+
+@Service
+public class UserService {
+
+    private final UserRepository userRepository;
+    private final CreneauRepository creneauRepository;
+    private final RdvRepository rdvRepository;
+
+    private final String uploadDir = "uploads";
+
+    public UserService(UserRepository userRepository,
+                       CreneauRepository creneauRepository,
+                       RdvRepository rdvRepository) {
+
+        this.userRepository = userRepository;
+        this.creneauRepository = creneauRepository;
+        this.rdvRepository = rdvRepository;
+
+        Path path = Paths.get(uploadDir);
+        if (!Files.exists(path)) {
+            try {
+                Files.createDirectories(path);
+            } catch (IOException e) {
+                throw new RuntimeException("Could not create upload folder", e);
+            }
+        }
+    }
+
+    // ================= AUTH SYNC =================
+
+    @Transactional
+    public User syncUser(Jwt jwt){
+        String id = jwt.getSubject();
+        String email = jwt.getClaim("email");
+
+        User user = userRepository.findById(id).orElse(null);
+
+        if (user == null) {
+            user = userRepository.findByEmail(email).orElse(null);
+        }
+
+        if (user == null) {
+            user = new User();
+            user.setId(id);
+            user.setEmail(email);
+            user.setRole(Role.ETUDIANT);
+            user = userRepository.save(user);
+        }
+
+        return user;
+    }
+
+    // ================= PROFILE =================
+
+    public User updateUser(Jwt jwt, UserUpdateRequest request) {
+
+        User user = userRepository.findById(jwt.getSubject())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (request.getNom() != null) user.setNom(request.getNom());
+        if (request.getPrenom() != null) user.setPrenom(request.getPrenom());
+        if (request.getTelephone() != null) user.setTelephone(request.getTelephone());
+        if (request.getSpecialite() != null) user.setSpecialite(request.getSpecialite());
+        if (request.getGenre() != null) user.setGenre(request.getGenre());
+        if (request.getSituation() != null) user.setSituation(request.getSituation());
+        if (request.getNiveauEtude() != null) user.setNiveauEtude(request.getNiveauEtude());
+
+        return userRepository.save(user);
+    }
+
+    public User saveUser(User user) {
+        return userRepository.save(user);
+    }
+
+    // ================= PHOTO =================
+
+    public User uploadPhoto(Jwt jwt, MultipartFile file) throws IOException {
+
+        User user = syncUser(jwt);
+
+        if (user.getPhotoPath() != null) {
+            Files.deleteIfExists(Paths.get(user.getPhotoPath()));
+        }
+
+        String filename = user.getId() + "_" + file.getOriginalFilename();
+        Path filePath = Paths.get(uploadDir, filename);
+
+        Files.write(filePath, file.getBytes());
+
+        user.setPhotoPath(filePath.toString());
+
+        return userRepository.save(user);
+    }
+
+    // ================= MEDECINS =================
+
+    public List<User> getAllMedecins() {
+        return userRepository.findByRole(Role.MEDECIN);
+    }
+
+    /**
+     * Maps a User (medecin) to MedecinResponse
+     * This method can be reused across the application
+     */
+    public MedecinResponse mapToMedecinResponse(User medecin) {
+        // Get doctor's creneaux (working hours)
+        List<CreneauResponse> creneaux = creneauRepository.findByMedecin_Id(medecin.getId())
+                .stream()
+                .map(c -> new CreneauResponse(c.getId(), c.getJour(), c.getDebut(), c.getFin()))
+                .toList();
+
+        // Get doctor's appointments (rdvs)
+        List<RdvResponse> rdvs = rdvRepository.findByMedecin_Id(medecin.getId())
+                .stream()
+                .map(this::mapToRdvResponse)
+                .toList();
+
+        // Convert doctor's universities to UniversiteResponse
+        List<UniversiteResponse> universiteResponses = medecin.getUniversites().stream()
+                .map(u -> new UniversiteResponse(
+                        u.getId(),
+                        u.getNom(),
+                        u.getVille(),
+                        u.getAdresse(),
+                        u.getTelephone(),
+                        u.getNbEtudiants(),
+                        u.getHoraire(),
+                        u.getLogoPath() != null ? "/uploads/" + u.getLogoPath() : null,
+                        u.getCode()
+                ))
+                .toList();
+
+        // Construire l'URL complète de la photo
+        String photoUrl = buildPhotoUrl(medecin.getPhotoPath());
+
+        return new MedecinResponse(
+                medecin.getId(),
+                medecin.getNom(),
+                medecin.getPrenom(),
+                medecin.getEmail(),
+                photoUrl,
+                medecin.getTelephone(),
+                medecin.getSpecialite(),
+                universiteResponses,
+                creneaux,
+                rdvs
+        );
+    }
+
+    /**
+     * Construit l'URL complète pour une photo
+     */
+    private String buildPhotoUrl(String photoPath) {
+        if (photoPath == null || photoPath.isEmpty()) {
+            return null;
+        }
+
+        // Si c'est déjà une URL complète
+        if (photoPath.startsWith("http")) {
+            return photoPath;
+        }
+
+        // Si le chemin commence par /uploads/medecins/
+        if (photoPath.contains("/uploads/medecins/")) {
+            // Extraire seulement le nom du fichier si nécessaire
+            if (photoPath.startsWith("/uploads/medecins/")) {
+                return photoPath;
+            }
+            // Sinon, extraire le nom du fichier
+            String filename = photoPath.substring(photoPath.lastIndexOf("/") + 1);
+            return "/uploads/medecins/" + filename;
+        }
+
+        // Si le chemin commence par /uploads/ mais pas medecins
+        if (photoPath.startsWith("/uploads/")) {
+            return photoPath;
+        }
+
+        // Sinon, c'est juste le nom du fichier
+        return "/uploads/medecins/" + photoPath;
+    }
+
+    /**
+     * Maps an Rdv to RdvResponse
+     */
+    private RdvResponse mapToRdvResponse(com.we4lead.backend.entity.Rdv r) {
+        // Convert doctor universities
+        List<UniversiteResponse> medecinUniversites = r.getMedecin().getUniversites().stream()
+                .map(u -> new UniversiteResponse(
+                        u.getId(),
+                        u.getNom(),
+                        u.getVille(),
+                        u.getAdresse(),
+                        u.getTelephone(),
+                        u.getNbEtudiants(),
+                        u.getHoraire(),
+                        u.getLogoPath() != null ? "/uploads/" + u.getLogoPath() : null,
+                        u.getCode()
+                ))
+                .toList();
+
+        // Construire l'URL de la photo du médecin
+        String medecinPhotoUrl = buildPhotoUrl(r.getMedecin().getPhotoPath());
+
+        // Create MedecinResponse for the RDV avec tous les champs
+        MedecinResponse rdvMedecinResponse = new MedecinResponse(
+                r.getMedecin().getId(),
+                r.getMedecin().getNom(),
+                r.getMedecin().getPrenom(),
+                r.getMedecin().getEmail(),
+                medecinPhotoUrl,
+                r.getMedecin().getTelephone(),
+                r.getMedecin().getSpecialite(),
+                medecinUniversites,
+                List.of(),
+                List.of()
+        );
+
+        // Convert student university
+        UniversiteResponse etudiantUniversite = null;
+        if (r.getEtudiant() != null && r.getEtudiant().getUniversite() != null) {
+            etudiantUniversite = new UniversiteResponse(
+                    r.getEtudiant().getUniversite().getId(),
+                    r.getEtudiant().getUniversite().getNom(),
+                    r.getEtudiant().getUniversite().getVille(),
+                    r.getEtudiant().getUniversite().getAdresse(),
+                    r.getEtudiant().getUniversite().getTelephone(),
+                    r.getEtudiant().getUniversite().getNbEtudiants(),
+                    r.getEtudiant().getUniversite().getHoraire(),
+                    r.getEtudiant().getUniversite().getLogoPath() != null ? "/uploads/" + r.getEtudiant().getUniversite().getLogoPath() : null,
+                    r.getEtudiant().getUniversite().getCode()
+            );
+        }
+
+        // Construire l'URL de la photo de l'étudiant
+        String etudiantPhotoUrl = buildPhotoUrl(r.getEtudiant() != null ? r.getEtudiant().getPhotoPath() : null);
+
+        // Create EtudiantResponse for the RDV avec tous les champs
+        EtudiantResponse etudiantResponse = r.getEtudiant() != null ?
+                new EtudiantResponse(
+                        r.getEtudiant().getId(),
+                        r.getEtudiant().getNom(),
+                        r.getEtudiant().getPrenom(),
+                        r.getEtudiant().getEmail(),
+                        r.getEtudiant().getTelephone(),
+                        etudiantPhotoUrl,
+                        etudiantUniversite,
+                        r.getEtudiant().getGenre(),
+                        r.getEtudiant().getSituation(),
+                        r.getEtudiant().getNiveauEtude()
+                ) : null;
+
+        return new RdvResponse(
+                r.getId(),
+                r.getDate(),
+                r.getHeure(),
+                r.getStatus() != null ? r.getStatus().name() : "CONFIRMED",
+                rdvMedecinResponse,
+                etudiantResponse
+        );
+    }
+
+    public List<MedecinResponse> getMedecinsWithAppointments() {
+        List<User> medecins = userRepository.findByRole(Role.MEDECIN);
+        return medecins.stream()
+                .map(this::mapToMedecinResponse)
+                .toList();
+    }
+}
