@@ -36,8 +36,8 @@ public class EmailService {
     @Value("${app.email.logo-type:image/png}")
     private String logoType;
 
-    private static final String PLATFORM_NAME = "We4Lead – Soutien aux étudiants et professeurs";
-    private static final String SUPPORT_EMAIL = "support@we4lead.com";
+    private static final String PLATFORM_NAME = "Universite de Sousse - We4Lead";
+    private static final String SUPPORT_EMAIL = "we4lead.cell@u-sousse.tn";
     private static final String WEBSITE_URL   = "https://www.we4lead.com";
 
     // Formatteur de date français élégant et lisible
