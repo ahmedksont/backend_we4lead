@@ -10,7 +10,7 @@ import java.util.Set;
 public class User {
 
     @Id
-    private String id;
+    private String id;  // Pas de cascade ici, c'est l'ID
 
     @Column(unique = true)
     private String email;
@@ -24,7 +24,6 @@ public class User {
 
     private String photoPath;
 
-    // NOUVEAUX CHAMPS
     @Enumerated(EnumType.STRING)
     private Situation situation;
 
@@ -37,7 +36,7 @@ public class User {
     private String specialite;
 
     @JsonIgnore
-    @ManyToMany
+    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinTable(
             name = "medecin_universite",
             joinColumns = @JoinColumn(name = "medecin_id"),
@@ -49,6 +48,24 @@ public class User {
     @JoinColumn(name = "universite_id")
     private Universite universite;
 
+    // Relations avec les autres entités
+    @OneToMany(mappedBy = "medecin", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
+    private Set<Demande> demandesRecues = new HashSet<>();
+
+    @OneToMany(mappedBy = "etudiant", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
+    private Set<Demande> demandesEnvoyees = new HashSet<>();
+
+    @OneToMany(mappedBy = "medecin", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
+    private Set<Rdv> rdvsMedecin = new HashSet<>();
+
+    @OneToMany(mappedBy = "etudiant", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
+    private Set<Rdv> rdvsEtudiant = new HashSet<>();
+
+    // Constructeurs
     public User() {}
 
     public User(String id, String email, String nom, String prenom, String telephone, Role role) {
@@ -100,4 +117,17 @@ public class User {
 
     public String getSpecialite() { return specialite; }
     public void setSpecialite(String specialite) { this.specialite = specialite; }
+
+    // ====== Getters & Setters pour les relations ======
+    public Set<Demande> getDemandesRecues() { return demandesRecues; }
+    public void setDemandesRecues(Set<Demande> demandesRecues) { this.demandesRecues = demandesRecues; }
+
+    public Set<Demande> getDemandesEnvoyees() { return demandesEnvoyees; }
+    public void setDemandesEnvoyees(Set<Demande> demandesEnvoyees) { this.demandesEnvoyees = demandesEnvoyees; }
+
+    public Set<Rdv> getRdvsMedecin() { return rdvsMedecin; }
+    public void setRdvsMedecin(Set<Rdv> rdvsMedecin) { this.rdvsMedecin = rdvsMedecin; }
+
+    public Set<Rdv> getRdvsEtudiant() { return rdvsEtudiant; }
+    public void setRdvsEtudiant(Set<Rdv> rdvsEtudiant) { this.rdvsEtudiant = rdvsEtudiant; }
 }
