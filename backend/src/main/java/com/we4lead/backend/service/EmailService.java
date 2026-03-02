@@ -257,7 +257,7 @@ public class EmailService {
                 getEmailFooterHtml()                        // 11 → footer
         );
 
-        String subject = "Confirmation de votre demande – " + demande.getTypeSituation();
+        String subject = "Votre signalement a bien été reçu – WE4LEAD";
 
         try {
             sendHtmlEmail(userEmail, subject, htmlBody);
