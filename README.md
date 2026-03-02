@@ -36,7 +36,7 @@ Spring Boot REST API for **secure school incident reporting** and administrative
 ```bash
 # 1. Clone the repository
 git clone https://github.com/ahmedksont/we4lead_backend.git
-cd we4lead_backend
+cd backend
 
 # 2. Build the project (skip tests for speed)
 mvn clean package -DskipTests
