@@ -153,6 +153,9 @@
             if (request.getSpecialite() != null) {
                 user.setSpecialite(request.getSpecialite());
             }
+            if (request.getEmail() != null) {
+                user.setEmail(request.getEmail());
+            }
             if (request.getGenre() != null) {
                 user.setGenre(request.getGenre());
             }
