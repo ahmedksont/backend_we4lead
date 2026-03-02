@@ -162,7 +162,7 @@ public class EmailService {
                 getEmailFooterHtml()
         );
 
-        String subject = "Nouvelle demande d'accompagnement – " + demande.getTypeSituation();
+        String subject = "Nouvelle demande d'accompagnement – WE4LEAD";
 
         try {
             sendHtmlEmail(medecin.getEmail(), subject, htmlBody);
